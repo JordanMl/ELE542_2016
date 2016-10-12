@@ -11,6 +11,8 @@
 
 #define UART_BAUD_SELECT (F_CPU/(UART_BAUD_RATE*16l)-1)
 
+
+/* CIRCULAR BUFFER */
 struct circularBuffer {
 	char *bufIn;
 	char *bufOut;
@@ -83,8 +85,8 @@ int main(void)
 	buffer.bufStart = &bufferTab[0];
 	buffer.bufEnd = &bufferTab[BUF_SIZE];
 
-    uart_init();
-    sei();
+    uart_init();	/* init the UART transmit buffer */
+    sei();			/* enable interrupts */
 
     while(1){
         switch(etat){
