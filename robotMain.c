@@ -11,18 +11,54 @@
 
 #define UART_BAUD_SELECT (F_CPU/(UART_BAUD_RATE*16l)-1)
 
+/*-------GLOBAL DECLARATIONS--------*/
+
+/* uart globals */
+
+
+char debugMsg=0;
+char data_send = 1; //data send with uart
+
+char bufferTab[BUF_SIZE];
+char vitesse;
+char angle;
+
+
 struct circularBuffer {
 	char *bufIn;
 	char *bufOut;
 	char *bufStart;
 	char *bufEnd;
 }buffer;
+/*----------------------------------*/
 
 
-char bufferTab[BUF_SIZE];
-char vitesse;
-char angle;
+/*-------------INTERRUPTS-----------*/
+ISR(USART_TXC_vect)
+/* signal handler for uart txd ready interrupt */
+{
+   data_send = 1;
+}
 
+ISR(USART_RXC_vect)
+/* signal handler for receive complete interrupt */
+{
+    unsigned char echo = UDR;
+    bufferPush(echo);
+	if (debugMsg == 0){
+		UDR = echo;
+	}    
+}
+
+ISR(TIM1_OVF_vect)
+/* signal handler for timer1 overflow*/
+{
+        OCR1A = vitesse;
+        OCR1B = vitesse;
+}
+/*------------------------------------*/
+
+/*-------------FUNCTIONS--------------*/
 void bufferPush (char inData){
 
 	*(buffer.bufIn) = inData;
@@ -46,26 +82,19 @@ char bufferPull (){
 	return outValue;
 }
 
-ISR(USART_TXC_vect)
-/* signal handler for uart txd ready interrupt */
-{
-
-}
-
-
-ISR(USART_RXC_vect)
-/* signal handler for receive complete interrupt */
-{
-    unsigned char echo = UDR;
-    bufferPush(echo);
-    UDR = echo;
-}
-
-ISR(TIM1_OVF_vect)
-/* signal handler for timer1 overflow*/
-{
-        OCR1A = vitesse;
-        OCR1B = vitesse;
+void uartDebugMsg(char* msg,int msgSize){
+	
+	debugMsg = 1; 
+	data_send = 0;
+	UDR = 0xFE;
+	for(i=O;i<msgSize;i++){
+		while(data_send == 0);
+		data_send = 0;
+		UDR = *msg;
+		msg++;	
+	}
+	UDR = 0xFF;
+	debugMsg = 0; 
 }
 
 void uart_init(void)
@@ -158,3 +187,4 @@ int main(void)
     }
 
 }
+/*------------------------------------*/
