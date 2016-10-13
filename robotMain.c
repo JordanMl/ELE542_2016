@@ -11,8 +11,6 @@
 
 #define UART_BAUD_SELECT (F_CPU/(UART_BAUD_RATE*16l)-1)
 
-
-/* CIRCULAR BUFFER */
 struct circularBuffer {
 	char *bufIn;
 	char *bufOut;
@@ -63,6 +61,13 @@ ISR(USART_RXC_vect)
     UDR = echo;
 }
 
+ISR(TIM1_OVF_vect)
+/* signal handler for timer1 overflow*/
+{
+        OCR1A = vitesse;
+        OCR1B = vitesse;
+}
+
 void uart_init(void)
 /* initialize uart */
 {
@@ -75,6 +80,49 @@ void uart_init(void)
    UBRRL = (unsigned char)(UART_BAUD_SELECT & 0x00FF);
 }
 
+void pwm_init(void)
+/* initialize PWM */
+{
+    /* configure niveau haut au débordement et bas à la comparaison (COM1A1/B1 = 1 ; COMA0/B0 = 0)
+        Mode Fast PWM (WGM11 = 1 ; WGM10 = 0 )*/
+    TCCR1A = ((1<<COM1A1)|(0<<COM1A0)|(1<<COM1B1)|(0<<COM1B0)|(0<<FOC1A)|(0<<FOC1B)|(1<<WGM11)|(0<<WGM10));
+    /* Mode Fast PWM (WGM13/12 = 1) fréquence du compteur = 16MHz/8 (CS12/10 = 0 ; CS11 = 1) */
+    TCCR1B = ((1<<WGM13)|(1<<WGM12)|(0<<CS12)|(1<<CS11)|(0<<CS10)|);
+    /*ICR1=TOP=10000=0x2710 for fpwm = 200Hz */
+    ICR1H = 0x27;
+    ICR1L = 0x10;
+
+    /* Timer1 Overflow enable*/
+    TIMSK = (1<<TOIE1);
+}
+
+void init(void)
+/* initialize GPIO*/
+{
+    DDRD = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2));
+}
+
+void calcule_vitesse(char cmd)
+{
+    if (cmd > 0 && cmd <= 200){
+        if (cmd == 100){
+            vitesse = 0;
+            /* Direction null */
+            PORTD = ((0<<PORTD7)|(0<<PORTD6)|(0<<PORTD3)|(0<<PORTD2));
+        }
+        else if (cmd < 100){
+            vitesse = (-1)*(cmd-100))*100;
+            /* Direction recule */
+            PORTD = ((0<<PORTD7)|(1<<PORTD6)|(0<<PORTD3)|(1<<PORTD2));
+        }
+        else if (cmd > 100){
+            vitesse = (cmd-100)*100;
+            /* Direction Avance */
+            PORTD = ((1<<PORTD7)|(0<<PORTD6)|(1<<PORTD3)|(0<<PORTD2));
+        }
+    }
+}
+
 int main(void)
 {
     char etat = 0;
@@ -85,21 +133,25 @@ int main(void)
 	buffer.bufStart = &bufferTab[0];
 	buffer.bufEnd = &bufferTab[BUF_SIZE];
 
-    uart_init();	/* init the UART transmit buffer */
-    sei();			/* enable interrupts */
+    uart_init();
+    init();
+    pwm_init();
+    sei();
 
     while(1){
         switch(etat){
+            /* Etat Reception Commande */
             case 0 : cmd = bufferPull();
                      if(cmd == 0xF1)
                         etat = 1;
                      break;
-
-            case 1 : vitesse = bufferPull();
+            /* Etat Reception Vitesse */
+            case 1 : cmd = bufferPull();
+                     calcule_vitesse(cmd);
                      etat = 2;
                      break;
-
-            case 2 : angle = bufferPull();
+            /* Etat Reception Angle */
+            case 2 : cmd = bufferPull();
                      etat = 0;
                      break;
         }
