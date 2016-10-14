@@ -6,7 +6,7 @@
 #define F_CPU 16000000UL            /* Crystal 16.000 Mhz */
 #endif
 #define UART_BAUD_RATE 9600         /* 9600 baud */
-#define BUF_SIZE 4
+#define BUF_SIZE 3
 
 
 #define UART_BAUD_SELECT (F_CPU/(UART_BAUD_RATE*16l)-1)
@@ -16,21 +16,23 @@
 /* uart globals */
 
 
-char debugMsg=0;
-char data_send = 1; //data send with uart
+unsigned char debugMsg=0;
+unsigned char data_send = 1; //data send with uart
 
-char bufferTab[BUF_SIZE];
-char vitesse;
-char angle;
+unsigned char bufferTab[BUF_SIZE];
+int vitesse;
+unsigned char angle;
 
 
 struct circularBuffer {
-	char *bufIn;
-	char *bufOut;
-	char *bufStart;
-	char *bufEnd;
+	unsigned char *bufIn;
+	unsigned char *bufOut;
+	unsigned char *bufStart;
+	unsigned char *bufEnd;
 }buffer;
 /*----------------------------------*/
+
+void bufferPush (unsigned char inData);
 
 
 /*-------------INTERRUPTS-----------*/
@@ -50,7 +52,7 @@ ISR(USART_RXC_vect)
 	}    
 }
 
-ISR(TIM1_OVF_vect)
+ISR(TIMER1_OVF_vect)
 /* signal handler for timer1 overflow*/
 {
         OCR1A = vitesse;
@@ -59,7 +61,7 @@ ISR(TIM1_OVF_vect)
 /*------------------------------------*/
 
 /*-------------FUNCTIONS--------------*/
-void bufferPush (char inData){
+void bufferPush (unsigned char inData){
 
 	*(buffer.bufIn) = inData;
 	if(buffer.bufIn==buffer.bufEnd){	//End of buffer
@@ -69,25 +71,25 @@ void bufferPush (char inData){
 		buffer.bufIn += 1;
 }
 
-char bufferPull (){
+unsigned char bufferPull (){
 
-	char outValue;
-	if(buffer.bufOut==buffer.bufIn){  //Buffer is empty
-		return 0;
-	}
+	unsigned char outValue = 0;
 	outValue = *(buffer.bufOut);
 	if(buffer.bufOut==buffer.bufEnd){
 		buffer.bufOut = buffer.bufStart;
 	}
+	else{
+		buffer.bufOut += 1;
+	}
 	return outValue;
 }
 
-void uartDebugMsg(char* msg,int msgSize){
+void uartDebugMsg(char *msg,int msgSize){
 	
 	debugMsg = 1; 
 	data_send = 0;
 	UDR = 0xFE;
-	for(i=O;i<msgSize;i++){
+	for(int i=0;i<msgSize;i++){
 		while(data_send == 0);
 		data_send = 0;
 		UDR = *msg;
@@ -116,7 +118,7 @@ void pwm_init(void)
         Mode Fast PWM (WGM11 = 1 ; WGM10 = 0 )*/
     TCCR1A = ((1<<COM1A1)|(0<<COM1A0)|(1<<COM1B1)|(0<<COM1B0)|(0<<FOC1A)|(0<<FOC1B)|(1<<WGM11)|(0<<WGM10));
     /* Mode Fast PWM (WGM13/12 = 1) fréquence du compteur = 16MHz/8 (CS12/10 = 0 ; CS11 = 1) */
-    TCCR1B = ((1<<WGM13)|(1<<WGM12)|(0<<CS12)|(1<<CS11)|(0<<CS10)|);
+    TCCR1B = ((1<<WGM13)|(1<<WGM12)|(0<<CS12)|(1<<CS11)|(0<<CS10));
     /*ICR1=TOP=10000=0x2710 for fpwm = 200Hz */
     ICR1H = 0x27;
     ICR1L = 0x10;
@@ -131,36 +133,42 @@ void init(void)
     DDRD = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2));
 }
 
-void calcule_vitesse(char cmd)
+void calcule_vitesse(unsigned char cmd)
 {
-    if (cmd > 0 && cmd <= 200){
+    if (cmd >= 0 && cmd <= 200){
         if (cmd == 100){
             vitesse = 0;
             /* Direction null */
-            PORTD = ((0<<PORTD7)|(0<<PORTD6)|(0<<PORTD3)|(0<<PORTD2));
+			 PORTD &= ~(1<<PORTD7);
+			 PORTD &= ~(1<<PORTD6);
+			 PORTD &= ~(1<<PORTD3);
+			 PORTD &= ~(1<<PORTD2);
         }
         else if (cmd < 100){
-            vitesse = (-1)*(cmd-100))*100;
+            vitesse = (-1)*(cmd-100)*100;
             /* Direction recule */
-            PORTD = ((0<<PORTD7)|(1<<PORTD6)|(0<<PORTD3)|(1<<PORTD2));
+            PORTD = ((1<<PORTD6)|(1<<PORTD2));
+			PORTD &= ~(1<<PORTD7);
+			PORTD &= ~(1<<PORTD3);
         }
         else if (cmd > 100){
             vitesse = (cmd-100)*100;
             /* Direction Avance */
-            PORTD = ((1<<PORTD7)|(0<<PORTD6)|(1<<PORTD3)|(0<<PORTD2));
+            PORTD = ((1<<PORTD7)|(1<<PORTD3));
+			PORTD &= ~(1<<PORTD6);
+			PORTD &= ~(1<<PORTD2);
         }
     }
 }
 
-int main(void)
-{
-    char etat = 0;
-    char cmd;
+int main(void){
+    unsigned char etat = 0;
+    unsigned char cmd;
 
 	buffer.bufIn = &bufferTab[0];
 	buffer.bufOut = &bufferTab[0];
 	buffer.bufStart = &bufferTab[0];
-	buffer.bufEnd = &bufferTab[BUF_SIZE];
+	buffer.bufEnd = &bufferTab[BUF_SIZE-1];
 
     uart_init();
     init();
@@ -171,8 +179,11 @@ int main(void)
         switch(etat){
             /* Etat Reception Commande */
             case 0 : cmd = bufferPull();
-                     if(cmd == 0xF1)
+					 //uartDebugMsg("case0",5);	
+                     if(cmd == 0xF1){
                         etat = 1;
+						//uartDebugMsg("cmd",1);	
+					 }
                      break;
             /* Etat Reception Vitesse */
             case 1 : cmd = bufferPull();
