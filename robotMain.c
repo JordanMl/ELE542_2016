@@ -20,8 +20,14 @@ unsigned char debugMsg=0;
 unsigned char data_send = 1; //data send with uart
 
 unsigned char bufferTab[BUF_SIZE];
-int vitesse;
-unsigned char angle;
+float vitesse = 0;  //speed command receive from transmitter  -1.0 to 1.0
+float vitGaucheMeasure = 0; //left motor speed measure from ADC  -1.0 to 1.0
+float vitDroiteMeasure = 0; //left motor speed measure from ADC  -1.0 to 1.0
+unsigned char motorMeasured = 0;  //0 : left motor speed meas     1 : right motor speed meas
+unsigned char motorAlreadyMeasured = 0;  // 0 : motor not measured yet    1 : motor already measure, don't save the conversion
+unsigned char nbOfMeasure = 0;   //numbre of measure accumulated 
+
+unsigned char angle = 0;
 
 
 struct circularBuffer {
@@ -55,14 +61,53 @@ ISR(USART_RXC_vect)
 ISR(TIMER1_OVF_vect)
 /* signal handler for timer1 overflow*/
 {
-        OCR1A = vitesse;
-        OCR1B = vitesse;
+        if (vitesse<0){
+			OCR1A = (unsigned int)(vitesse*-10000);
+			OCR1B = (unsigned int)(vitesse*-10000);
+		}
+		else{
+			OCR1A = (unsigned int)(vitesse*10000);   
+			OCR1B = (unsigned int)(vitesse*10000);
+		}
 }
 
 ISR(ADC)
-/* signal handler for ADC convertion complete interrupt */
+/* signal handler for ADC conversion complete interrupt */
 {
-     //TO DO
+    unsigned int convValue = ADCL + (ADCH<<8);
+	
+	if (motorAlreadyMeasured==0){  //Motor not measured yet
+		
+		if (ADMUX & (1<<MUX0){  //if MUX0 = 0  ->  left motor measure
+		
+			if(PINA & 1<<PINA2) //if PINA2 = 0  -> left motor go back
+			{
+				vitGaucheMeasure += -1*convValue/(1023);
+			}
+			else{			    //PINA2 = 1  -> left motor go forward
+				vitGaucheMeasure += convValue/(1023);
+			}
+			ADMUX |= (1<<MUX0); //change canal to right motor
+		
+		}else{					//MUX0 = 1  ->  right motor measure
+	
+			if(PINA & 1<<PINA2) //if PINA2 = 0  -> right motor go back
+			{
+				vitDroiteMeasure += -1*convValue/(1023);
+			}
+			else{			    //PINA2 = 1  -> right motor go forward
+				vitDroiteMeasure += convValue/(1023);
+			}
+			ADMUX &= ~(Ox1F); //change canal to left motor
+		}
+		nbOfMeasure ++;
+			
+	}	
+	else{
+		//don't save conversion value 
+		motorAlreadyMeasured = 0;
+	}
+	
 }
 
 /*------------------------------------*/
@@ -145,7 +190,7 @@ void init(void)
 
     /* Configuration de la tension de référence (REFS1/0)*/
     ADMUX = ((0<<REFS1)|(0<<REFS0));
-    /* Configuration du canal d'entrée de l'ADC ADC0:MUX4:0=0000*/
+    /* Configuration du canal d'entrée de l'ADC ADC0:MUX4:0=0000  pour le moteur Gauche */  
     ADMUX &= ~(Ox1F);
     /* Enable ADC, Interrupt et config de l'horloge, prescaler de 128 pour fech=125kHz*/
     ADCSRA = ((1<<ADEN)|(1<<ADIE)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
@@ -164,14 +209,14 @@ void calcule_vitesse(unsigned char v)
 			 PORTD &= ~(1<<PORTD2);
         }
         else if (v < 100){
-            vitesse = (-1)*(v-100)*100;
+            vitesse = (v-100)/100;
             /* Direction recule */
 			PORTD = ((1<<PORTD7)|(1<<PORTD3));
 			PORTD &= ~(1<<PORTD6);
 			PORTD &= ~(1<<PORTD2);
         }
         else if (v > 100){
-            vitesse = (v-100)*100;
+            vitesse = (v-100)/100;
             /* Direction Avance */
             PORTD = ((1<<PORTD6)|(1<<PORTD2));
 			PORTD &= ~(1<<PORTD7);
@@ -208,7 +253,7 @@ int main(void){
 						break;
 					 }
 					 else{
-					 	vitesseTmp = cmd;
+					 	vitesseTmp = cmd; //save the speed cmd in VitesseTmp
 					 }
                      etat = 2;
                      break;
