@@ -49,7 +49,7 @@ ISR(USART_RXC_vect)
     bufferPush(echo);
 	if (debugMsg == 0){
 		UDR = echo;
-	}    
+	}
 }
 
 ISR(TIMER1_OVF_vect)
@@ -85,18 +85,18 @@ unsigned char bufferPull (){
 }
 
 void uartDebugMsg(char *msg,int msgSize){
-	
-	debugMsg = 1; 
+
+	debugMsg = 1;
 	data_send = 0;
 	UDR = 0xFE;
 	for(int i=0;i<msgSize;i++){
 		while(data_send == 0);
 		data_send = 0;
 		UDR = *msg;
-		msg++;	
+		msg++;
 	}
 	UDR = 0xFF;
-	debugMsg = 0; 
+	debugMsg = 0;
 }
 
 void uart_init(void)
@@ -133,10 +133,10 @@ void init(void)
     DDRD = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2));
 }
 
-void calcule_vitesse(unsigned char cmd)
+void calcule_vitesse(unsigned char v)
 {
-    if (cmd >= 0 && cmd <= 200){
-        if (cmd == 100){
+    if (v >= 0 && v <= 200){
+        if (v == 100){
             vitesse = 0;
             /* Direction null */
 			 PORTD &= ~(1<<PORTD7);
@@ -144,19 +144,19 @@ void calcule_vitesse(unsigned char cmd)
 			 PORTD &= ~(1<<PORTD3);
 			 PORTD &= ~(1<<PORTD2);
         }
-        else if (cmd < 100){
-            vitesse = (-1)*(cmd-100)*100;
+        else if (v < 100){
+            vitesse = (-1)*(v-100)*100;
             /* Direction recule */
+			PORTD = ((1<<PORTD7)|(1<<PORTD3));
+			PORTD &= ~(1<<PORTD6);
+			PORTD &= ~(1<<PORTD2);
+        }
+        else if (v > 100){
+            vitesse = (v-100)*100;
+            /* Direction Avance */
             PORTD = ((1<<PORTD6)|(1<<PORTD2));
 			PORTD &= ~(1<<PORTD7);
 			PORTD &= ~(1<<PORTD3);
-        }
-        else if (cmd > 100){
-            vitesse = (cmd-100)*100;
-            /* Direction Avance */
-            PORTD = ((1<<PORTD7)|(1<<PORTD3));
-			PORTD &= ~(1<<PORTD6);
-			PORTD &= ~(1<<PORTD2);
         }
     }
 }
@@ -164,6 +164,7 @@ void calcule_vitesse(unsigned char cmd)
 int main(void){
     unsigned char etat = 0;
     unsigned char cmd;
+	unsigned char vitesseTmp = 0;
 
 	buffer.bufIn = &bufferTab[0];
 	buffer.bufOut = &bufferTab[0];
@@ -179,19 +180,31 @@ int main(void){
         switch(etat){
             /* Etat Reception Commande */
             case 0 : cmd = bufferPull();
-					 //uartDebugMsg("case0",5);	
-                     if(cmd == 0xF1){
+					 if(cmd == 0xF1){
                         etat = 1;
-						//uartDebugMsg("cmd",1);	
 					 }
                      break;
             /* Etat Reception Vitesse */
             case 1 : cmd = bufferPull();
-                     calcule_vitesse(cmd);
+					 if(cmd == 0xF1 | cmd == 0xF0){
+                        etat = 1; //Securite
+						break;
+					 }
+					 else{
+					 	vitesseTmp = cmd;
+					 }
                      etat = 2;
                      break;
             /* Etat Reception Angle */
             case 2 : cmd = bufferPull();
+					 if(cmd == 0xF1 | cmd == 0xF0){
+                        etat = 1; //Securite
+						break;
+					 }
+					 else{
+						//TO DO : calcul angle
+						calcule_vitesse(vitesseTmp);
+					 }
                      etat = 0;
                      break;
         }
@@ -199,3 +212,6 @@ int main(void){
 
 }
 /*------------------------------------*/
+
+
+
