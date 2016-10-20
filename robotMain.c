@@ -58,6 +58,13 @@ ISR(TIMER1_OVF_vect)
         OCR1A = vitesse;
         OCR1B = vitesse;
 }
+
+ISR(ADC)
+/* signal handler for ADC convertion complete interrupt */
+{
+     //TO DO
+}
+
 /*------------------------------------*/
 
 /*-------------FUNCTIONS--------------*/
@@ -99,21 +106,29 @@ void uartDebugMsg(char *msg,int msgSize){
 	debugMsg = 0;
 }
 
-void uart_init(void)
-/* initialize uart */
+void init(void)
 {
-   /* configure asynchronous operation (UMSEL), no parity(UPM1,UPM1), 1 stop bit(USBS), 8 data bits(UCSZ1,UCSZ0), Tx on rising edge(UCPOL) */
+    /* GPIO Init*/
+
+    /* Initialisation du port A, DD7:SW7 DD6:SW6 DD4:CAL DD3:DirD DD2:DirG DD1:Vd DD0:Vg*/
+    DDRA = ((0<<DD7)|(0<<DD6)|(1<<DD4)|(0<<DD3)|(0<<DD2)|(0<<DD1)|(0<<DD0))
+    /* Initialisation du port B (LED)*/
+    DDRB = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2)|(1<<DDD0)|(1<<DDD0));
+    /* Initialisation du port D, DD2:DirG1 DD3:DirG2 DD4:PWMG DD5:PWMD DD6:DirD1 DD7:DirD2*/
+    DDRD = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2));
+
+    /*UART Init*/
+
+    /* configure asynchronous operation (UMSEL), no parity(UPM1,UPM1), 1 stop bit(USBS), 8 data bits(UCSZ1,UCSZ0), Tx on rising edge(UCPOL) */
    UCSRC = ((1<<URSEL)|(0<<UMSEL)|(0<<UPM1)|(0<<UPM0)|(0<<USBS)|(1<<UCSZ1)|(1<<UCSZ0)|(0<<UCPOL));
    /* enable RxD/TxD(RXEN,TXEN) and ints(RXCIE,TXCIE), 8 data bits(UCSZ2) */
    UCSRB = ((1<<RXCIE)|(1<<TXCIE)|(1<<RXEN)|(1<<TXEN)|(0<<UCSZ2));
    /* set baud rate */
    UBRRH = (unsigned char)(UART_BAUD_SELECT >> 8);
    UBRRL = (unsigned char)(UART_BAUD_SELECT & 0x00FF);
-}
 
-void pwm_init(void)
-/* initialize PWM */
-{
+    /* PWM Init */
+
     /* configure niveau haut au débordement et bas à la comparaison (COM1A1/B1 = 1 ; COMA0/B0 = 0)
         Mode Fast PWM (WGM11 = 1 ; WGM10 = 0 )*/
     TCCR1A = ((1<<COM1A1)|(0<<COM1A0)|(1<<COM1B1)|(0<<COM1B0)|(0<<FOC1A)|(0<<FOC1B)|(1<<WGM11)|(0<<WGM10));
@@ -125,12 +140,16 @@ void pwm_init(void)
 
     /* Timer1 Overflow enable*/
     TIMSK = (1<<TOIE1);
-}
 
-void init(void)
-/* initialize GPIO*/
-{
-    DDRD = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2));
+    /* ADC Init */
+
+    /* Configuration de la tension de référence (REFS1/0)*/
+    ADMUX = ((0<<REFS1)|(0<<REFS0));
+    /* Configuration du canal d'entrée de l'ADC ADC0:MUX4:0=0000*/
+    ADMUX &= ~(Ox1F);
+    /* Enable ADC, Interrupt et config de l'horloge, prescaler de 128 pour fech=125kHz*/
+    ADCSRA = ((1<<ADEN)|(1<<ADIE)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
+
 }
 
 void calcule_vitesse(unsigned char v)
@@ -171,9 +190,7 @@ int main(void){
 	buffer.bufStart = &bufferTab[0];
 	buffer.bufEnd = &bufferTab[BUF_SIZE-1];
 
-    uart_init();
     init();
-    pwm_init();
     sei();
 
     while(1){
