@@ -155,46 +155,55 @@ void init(void)
 {
     /* GPIO Init*/
 
-    /* Initialisation du port A, DD7:SW7 DD6:SW6 DD4:CAL DD3:DirD DD2:DirG DD1:Vd DD0:Vg*/
-    DDRA = ((0<<DD7)|(0<<DD6)|(1<<DD4)|(0<<DD3)|(0<<DD2)|(0<<DD1)|(0<<DD0))
-    /* Initialisation du port B (LED)*/
-    DDRB = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2)|(1<<DDD0)|(1<<DDD0));
-    /* Initialisation du port D, DD2:DirG1 DD3:DirG2 DD4:PWMG DD5:PWMD DD6:DirD1 DD7:DirD2*/
-    DDRD = ((1<<DDD7)|(1<<DDD6)|(1<<DDD5)|(1<<DDD4)|(1<<DDD3)|(1<<DDD2));
-
+    /* Initialisation du port A, DD7:SW7  DD6:SW6  DD5:not used  DD4:CAL  DD3:DirD  DD2:DirG  DD1:Vd  DD0:Vg*/
+    DDRA = 0b00001100;  
+    /* Initialisation du port B (LED) tout en sortie*/
+    DDRB = 0b11111111;
+    /* Initialisation du port D,DD0:Rx (uart) DD1:Tx (uart) DD2:DirG1  
+    DD3:DirG2  DD4:PWMG  DD5:PWMD  DD6:DirD1  DD7:DirD2*/
+	DDRD = 0b01111111; 
+	
     /*UART Init*/
-
-    /* configure asynchronous operation (UMSEL), no parity(UPM1,UPM1), 1 stop bit(USBS), 8 data bits(UCSZ1,UCSZ0), Tx on rising edge(UCPOL) */
-   UCSRC = ((1<<URSEL)|(0<<UMSEL)|(0<<UPM1)|(0<<UPM0)|(0<<USBS)|(1<<UCSZ1)|(1<<UCSZ0)|(0<<UCPOL));
+    /* configure asynchronous operation (UMSEL), no parity(UPM1,UPM0), 1 stop bit(USBS), 8 data bits(UCSZ1,UCSZ0), Tx on rising edge(UCPOL) */
+   UCSRC |= (1<<URSEL); //selectionne la modification de UCSRC 
+   UCSRC &= ~((1<<UMSEL)|(1<<UPM1)|(1<<UPM0)|(1<<USBS)|(1<<UCPOL)); //clears bits (0 value)
+   UCSRC |= ((1<<UCSZ1)|(1<<UCSZ0)); //sets bits (1 value)
    /* enable RxD/TxD(RXEN,TXEN) and ints(RXCIE,TXCIE), 8 data bits(UCSZ2) */
-   UCSRB = ((1<<RXCIE)|(1<<TXCIE)|(1<<RXEN)|(1<<TXEN)|(0<<UCSZ2));
-   /* set baud rate */
+   UCSRB = &= ~((1<<UCSZ2))
+   UCSRB = ((1<<RXCIE)|(1<<TXCIE)|(1<<RXEN)|(1<<TXEN));
+   /* set baud rate 16MHz, Asynchronous normal, UBRR = 103*/
    UBRRH = (unsigned char)(UART_BAUD_SELECT >> 8);
    UBRRL = (unsigned char)(UART_BAUD_SELECT & 0x00FF);
 
     /* PWM Init */
-
-    /* configure niveau haut au débordement et bas à la comparaison (COM1A1/B1 = 1 ; COMA0/B0 = 0)
-        Mode Fast PWM (WGM11 = 1 ; WGM10 = 0 )*/
-    TCCR1A = ((1<<COM1A1)|(0<<COM1A0)|(1<<COM1B1)|(0<<COM1B0)|(0<<FOC1A)|(0<<FOC1B)|(1<<WGM11)|(0<<WGM10));
-    /* Mode Fast PWM (WGM13/12 = 1) fréquence du compteur = 16MHz/8 (CS12/10 = 0 ; CS11 = 1) */
-    TCCR1B = ((1<<WGM13)|(1<<WGM12)|(0<<CS12)|(1<<CS11)|(0<<CS10));
+    /* Clear OC1A/OC1B on compare match : Niveau bas après avoir matché (COM1A1/B1 = 1 ; COMA0/B0 = 0) */
+    TCCR1A |= ((1<<COM1A1)|(1<<COM1B1));
+	TCCR1A &= ~((1<<COM1A0)|(1<<COM1B0));
+    /* Mode Fast PWM (WGM10 = 0  WGM11 = 1  WGM12 = 1   WGM13 = 1)*/
+    TCCR1A &= ~(1<<WGM10);
+	TCCR1A |= (1<<WGM11);
+	TCCR1B |= ((1<<WGM13)|(1<<WGM12)); 
+	/*fréquence du compteur = 16MHz/8 (CS12/10 = 0 ; CS11 = 1) */
+	TCCR1B &= ~((1<<CS12)|(1<<CS10));
+	TCCR1B |= (1<<CS11);
     /*ICR1=TOP=10000=0x2710 for fpwm = 200Hz */
     ICR1H = 0x27;
     ICR1L = 0x10;
 
     /* Timer1 Overflow enable*/
-    TIMSK = (1<<TOIE1);
+    TIMSK |= (1<<TOIE1);
 
     /* ADC Init */
-
-    /* Configuration de la tension de référence (REFS1/0)*/
-    ADMUX = ((0<<REFS1)|(0<<REFS0));
+    /* Configuration de la tension de référence (REFS1/0) -> */
+    ADMUX &= ~((1<<REFS1)|(1<<REFS0)); //REFS1 = 0 et REFS0 = 0   AREF, Internal Vref turned off
     /* Configuration du canal d'entrée de l'ADC ADC0:MUX4:0=0000  pour le moteur Gauche */  
     ADMUX &= ~(Ox1F);
-    /* Enable ADC, Interrupt et config de l'horloge, prescaler de 128 pour fech=125kHz*/
-    ADCSRA = ((1<<ADEN)|(1<<ADIE)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
-
+    /* Enable ADC, Interrupt et config de l'horloge, ADEN = 1 active l'ADC
+	ADATE = 1 : Active le declenchement auto de l'ADC (mode free run configuré sur SFIOR)
+	ADIE = 1 : Acitve l'interrupt 'fin de conversion' de l'ADC
+	ADPS2/0 = 111 : prescaler de 128 pour fech=125kHz*/
+    ADCSRA |= ((1<<ADEN)|(1<<ADATE)|(1<<ADIE)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0));
+	SFIOR &= ~((1<<ADTS2)|(1<<ADTS1)|(1<<ADTS0));  //source declenchement automatique : Free run mode
 }
 
 void calcule_vitesse(unsigned char v)
